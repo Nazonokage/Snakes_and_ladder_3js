@@ -27,6 +27,31 @@ label { display: grid; gap: 4px; font-size: 13px }
 .win { text-align: center }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none } }
 
-.overlay.side { pointer-events: none; background: #0002; place-items: center start }
-.overlay.side .modal { pointer-events: auto }
+.modal-body { display: grid; gap: 10px }
+.modal-body[hidden] { display: none }
+.overlay.floating-setup { pointer-events: none; background: transparent; display: block; padding: 0 }
+.floating-setup .setup-panel { position: absolute; top: 0; left: 0; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; pointer-events: auto; box-shadow: 0 16px 48px #0006; border-color: #ffffff35 }
+.setup-header { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #ffffff18; flex-shrink: 0 }
+.setup-handle { display: flex; align-items: center; gap: 10px; flex: 1; text-align: left; border: 0; background: transparent; cursor: grab; touch-action: none; user-select: none; font-weight: 700; padding: 4px }
+.setup-handle > span:first-child { font-size: 28px; color: #ffcd70 }
+.setup-handle small { display: block; font-size: 11px; font-weight: 400; color: #b1bad2; margin-top: 2px }
+.dragging .setup-handle { cursor: grabbing }
+.setup-collapse { min-width: 36px; font-size: 20px; padding: 2px 8px }
+.setup-handle:focus-visible, .setup-collapse:focus-visible { outline: 2px solid #ffcd70; outline-offset: 2px }
+.setup-panel .modal-body { padding: 12px; overflow-y: auto; overscroll-behavior: contain; min-height: 0 }
+.setup-panel .setup-footer { padding: 10px 12px; border-top: 1px solid #ffffff18; flex-shrink: 0; justify-content: space-between }
+.setup-panel .setup-footer .roll { flex: 1 }
 input:not([type]) { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #ffffff33; background: #2a3150; color: inherit }
+
+.dice-preview { position: absolute; top: 12px; right: 12px; width: 210px; text-align: center; pointer-events: none; padding: 10px }
+.dice-preview strong { font-size: 14px; color: #ffe3a0 }
+.dice-preview small { display: block; font-size: 11px; opacity: .7 }
+.dice-viewport { height: 170px }
+.motion-demo { position: absolute; bottom: 80px; left: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 24px) }
+@media (max-width: 600px) {
+  .players { min-width: 145px; padding: 8px; font-size: 12px }
+  .players button { padding: 6px 8px; font-size: 12px }
+  .dice-preview { width: 140px; right: 8px; padding: 8px }
+  .dice-viewport { height: 125px }
+  .dice-preview strong { font-size: 12px }
+}

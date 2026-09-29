@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import type { BoardConfig, Fx, FxKind, Move, Phase, Player, Stage } from '../types/game'
 import { mulberry32, reshuffleUpper } from '../utils/boardGenerator'
 import { useDraft } from './useDraftStore'
+import { playFeedback, unlockSound } from '../utils/feedback'
+import { gentleMotion } from './useMotion'
 
 const COLORS = ['#e63946', '#2a9d8f', '#f4a261', '#8e6bd8']
 const mkPlayers = (names: string[]): Player[] => names.map((name, i) => ({ id: i, name, color: COLORS[i], pos: 1, skip: 0 }))
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 let seq = 0
-const rm = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+const rm = gentleMotion
 const mv = (kind: Move['kind'], from: number, to: number): Move => ({ id: ++seq, kind, from, to })
 
 interface GameState {
@@ -30,7 +32,7 @@ export const useGame = create<GameState>((set, get) => {
 
   const finish = () => {
     const s = get(), p = s.players[s.current], n = s.players.length
-    if (p.pos === s.board.size ** 2) { set({ phase: 'WIN', winner: p.id, mark: null }); emit('land', p.pos); return }
+    if (p.pos === s.board.size ** 2) { playFeedback('win'); set({ phase: 'WIN', winner: p.id, mark: null }); emit('land', p.pos); return }
     set({ phase: 'NEXT_TURN', mark: null })
     let next = s.extra ? s.current : (s.current + 1) % n
     if (s.extra) say(`${p.name} rolls again!`)
@@ -86,7 +88,7 @@ export const useGame = create<GameState>((set, get) => {
   return {
     ...init(useDraft.getState().present, ['Player 1', 'Player 2']), boardVersion: 0, rollId: 0, gameId: 0,
     startGame: (b, names) => set(s => ({ ...init(b, names), boardVersion: s.boardVersion + 1, gameId: s.gameId + 1 })),
-    roll: () => { if (get().phase !== 'IDLE') return; set(s => ({ phase: 'DICE_ROLLING', dice: 1 + Math.floor(Math.random() * 6), rollId: s.rollId + 1 })) },
+    roll: () => { if (get().phase !== 'IDLE') return; void unlockSound().then(() => { if (get().phase === 'DICE_ROLLING') playFeedback('roll') }); set(s => ({ phase: 'DICE_ROLLING', dice: 1 + Math.floor(Math.random() * 6), rollId: s.rollId + 1 })) },
     diceSettled: () => {
       const s = get(); if (s.phase !== 'DICE_ROLLING' || s.dice == null) return
       const p = s.players[s.current], total = s.board.size ** 2
@@ -96,6 +98,7 @@ export const useGame = create<GameState>((set, get) => {
     },
     advance: () => {
       const s = get(), m = s.queue[0]; if (!m) return
+      if (m.kind === 'snake' || m.kind === 'ladder') playFeedback('land')
       patch(s.current, p => ({ ...p, pos: m.to }))
       const rest = s.queue.slice(1); set({ queue: rest })
       if (m.kind !== 'hop') emit(m.kind === 'snake' ? 'snake' : m.kind === 'ladder' ? 'ladder' : 'land', m.to)

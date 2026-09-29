@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDraft } from '../../store/useDraftStore'
 import { useGame } from '../../store/useGameStore'
 import { makeBoard, SPECIAL_TYPES } from '../../utils/boardGenerator'
@@ -6,6 +6,26 @@ import { parseDoc, toDoc, MAX_CHARS } from '../../utils/boardDoc'
 import type { BoardConfig, SpecialType } from '../../types/game'
 
 export function CustomizerModal({ onClose, setup = false }: { onClose: () => void; setup?: boolean }) {
+  const panel = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null)
+  const [position, setPosition] = useState({ x: 12, y: 12 })
+  const [collapsed, setCollapsed] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const constrain = (x: number, y: number) => ({
+    x: Math.max(12, Math.min(x, window.innerWidth - (panel.current?.offsetWidth ?? 360) - 12)),
+    y: Math.max(12, Math.min(y, window.innerHeight - (panel.current?.offsetHeight ?? 100) - 12)),
+  })
+  useLayoutEffect(() => {
+    if (!setup || !panel.current) return
+    const keepVisible = () => setPosition(p => {
+      const next = constrain(p.x, p.y)
+      return next.x === p.x && next.y === p.y ? p : next
+    })
+    const observer = new ResizeObserver(keepVisible)
+    observer.observe(panel.current)
+    window.addEventListener('resize', keepVisible)
+    return () => { observer.disconnect(); window.removeEventListener('resize', keepVisible) }
+  }, [setup])
   const d = useDraft(), b = d.present
   const start = useGame(s => s.startGame)
   const [names, setNames] = useState<string[]>(() => useGame.getState().players.map(p => p.name))
@@ -34,10 +54,38 @@ export function CustomizerModal({ onClose, setup = false }: { onClose: () => voi
     if (file.current) file.current.value = ''
   }
   return (
-    <div className={`overlay ${setup ? 'side' : ''}`} onClick={setup ? undefined : onClose}>
-      <div className="panel modal" onClick={e => e.stopPropagation()}>
-        <h2>{setup ? 'Game setup' : 'Board editor'} <span className="tag">Draft only</span></h2>
-        <p className="hint">production defaults → draft → validated export. Edits reach the game only via “Apply &amp; restart”.</p>
+    <div className={`overlay ${setup ? 'floating-setup' : ''}`} onClick={setup ? undefined : onClose}>
+      <div ref={panel} className={`panel modal ${setup ? 'setup-panel' : ''} ${dragging ? 'dragging' : ''}`} style={setup ? { transform: `translate3d(${position.x}px, ${position.y}px, 0)` } : undefined} onClick={e => e.stopPropagation()}>
+        {setup ? <header className="setup-header">
+          <button className="setup-handle" aria-label="Move game setup panel" title="Drag to move · arrow keys to reposition"
+            onPointerDown={e => {
+              if (e.button !== 0) return
+              drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: position.x, top: position.y }
+              e.currentTarget.setPointerCapture(e.pointerId); setDragging(true)
+            }}
+            onPointerMove={e => {
+              const origin = drag.current
+              if (!origin || origin.id !== e.pointerId) return
+              setPosition(constrain(origin.left + e.clientX - origin.x, origin.top + e.clientY - origin.y))
+            }}
+            onPointerUp={e => {
+              drag.current = null; setDragging(false)
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+            }}
+            onPointerCancel={() => { drag.current = null; setDragging(false) }}
+            onLostPointerCapture={() => { drag.current = null; setDragging(false) }}
+            onKeyDown={e => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+              e.preventDefault()
+              const step = e.shiftKey ? 50 : 20
+              setPosition(p => constrain(p.x + (e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0), p.y + (e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0)))
+            }}>
+            <span aria-hidden="true">⠿</span><span>Game setup<small>Drag me anywhere</small></span>
+          </button>
+          <button className="setup-collapse" onClick={() => setCollapsed(v => !v)} aria-expanded={!collapsed} aria-controls="setup-options" aria-label={collapsed ? 'Expand settings' : 'Minimize settings'}>{collapsed ? '+' : '−'}</button>
+        </header> : <h2>Board editor <span className="tag">Draft only</span></h2>}
+        <div id={setup ? 'setup-options' : undefined} className="modal-body" hidden={setup && collapsed}>
+        <p className="hint">{setup ? 'Changes preview live. Drag the board to rotate; scroll or pinch to zoom.' : 'Edit your draft, then choose Apply & restart to use it.'}</p>
         <label>Board size
           <select value={b.size} onChange={e => regen(Number(e.target.value))}>{[6, 7, 8, 9, 10, 11, 12].map(n => <option key={n}>{n}</option>)}</select>
         </label>
@@ -69,7 +117,8 @@ export function CustomizerModal({ onClose, setup = false }: { onClose: () => voi
           <button onClick={() => { if (confirm('Reset all draft changes?')) d.reset() }}>Reset</button>
           <input ref={file} type="file" accept="application/json" hidden onChange={e => void importJson(e.target.files?.[0])} />
         </div>
-        <div className="bar">{!setup && <button onClick={onClose}>Close</button>}<button className="roll" onClick={() => { start(b, names.map((n, i) => n.trim() || `Player ${i + 1}`)); onClose() }}>{setup ? '▶ Start game' : 'Apply & restart'}</button></div>
+        </div>
+        <div className="bar setup-footer">{setup && collapsed && <button onClick={() => regen()}>↻ Regenerate</button>}{!setup && <button onClick={onClose}>Close</button>}<button className="roll" onClick={() => { start(b, names.map((n, i) => n.trim() || `Player ${i + 1}`)); onClose() }}>{setup ? '▶ Start game' : 'Apply & restart'}</button></div>
       </div>
     </div>
   )

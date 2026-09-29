@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
+import { DicePreview } from '../Scene/GameScene'
+import { useSound } from '../../utils/feedback'
+import { useMotion } from '../../store/useMotion'
 import { useGame } from '../../store/useGameStore'
 
 export function HUD({ onEdit }: { onEdit: () => void }) {
   const g = useGame()
+  const motion = useMotion()
+  const sound = useSound()
   const [show, setShow] = useState<string | null>(null)
   useEffect(() => {
     if (!g.toast) return
@@ -20,10 +25,13 @@ export function HUD({ onEdit }: { onEdit: () => void }) {
           </div>
         ))}
         <button onClick={onEdit}>⚙ Customize</button>
+        <button onClick={motion.toggle} title="Gentle motion keeps tile and ladder steps visible with less bouncing">Motion: {motion.mode === 'full' ? 'Full' : 'Gentle'}</button>
+        <button onClick={sound.toggle} aria-pressed={sound.enabled}>Sound: {sound.enabled ? 'On' : 'Off'}</button>
       </aside>
+      <DicePreview />
       <div className="dock">
         <button className="roll" disabled={g.phase !== 'IDLE'} onClick={g.roll}>
-          {g.phase === 'IDLE' ? `🎲 ${cur.name}: Roll` : g.dice ? `Rolled ${g.dice}` : '…'}
+          {g.phase === 'IDLE' ? `🎲 ${cur.name}: Roll` : g.phase === 'DICE_ROLLING' ? 'Rolling…' : g.dice ? `Rolled ${g.dice}` : '…'}
         </button>
         <small>{g.phase.replace(/_/g, ' ')}</small>
       </div>

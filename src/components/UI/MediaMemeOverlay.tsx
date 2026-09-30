@@ -16,12 +16,40 @@ const SNAKE_VIDEOS = [
   '/vids/Man gets bit by snake entering his home.mp4'
 ]
 
+const MEME_IMAGES = [
+  '/image/climbing_ladder.png',
+  '/image/evilLarry.png',
+  '/image/catfacedsnake.png',
+  '/image/snake_dancing.png'
+]
+
+// Preload media in browser memory so images/videos display instantly
+if (typeof window !== 'undefined') {
+  MEME_IMAGES.forEach(src => {
+    const img = new Image()
+    img.src = src
+  })
+  SNAKE_VIDEOS.forEach(src => {
+    const vid = document.createElement('video')
+    vid.preload = 'auto'
+    vid.src = src
+  })
+}
+
 export function MediaMemeOverlay({ enabled }: { enabled: boolean }) {
   const g = useGame()
   const motion = useMotion()
   const [activeMeme, setActiveMeme] = useState<MemeEvent | null>(null)
   const lastProcessedRef = useRef<string | number>('')
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Preload images again on mount for resilience
+  useEffect(() => {
+    MEME_IMAGES.forEach(src => {
+      const img = new Image()
+      img.src = src
+    })
+  }, [])
 
   // Listen to snake, ladder, rewind, freeze triggers
   useEffect(() => {
@@ -107,10 +135,10 @@ export function MediaMemeOverlay({ enabled }: { enabled: boolean }) {
     }
   }, [g.phase, g.current, g.players, g.board.snakes, enabled, motion.mode])
 
-  // Auto-dismiss timer (images only — videos close via onEnded)
+  // Auto-dismiss timer (images only — held and rendered for 2 seconds / 2000ms)
   useEffect(() => {
     if (!activeMeme || activeMeme.video) return
-    const timer = setTimeout(() => setActiveMeme(null), 2800)
+    const timer = setTimeout(() => setActiveMeme(null), 2000)
     return () => clearTimeout(timer)
   }, [activeMeme])
 

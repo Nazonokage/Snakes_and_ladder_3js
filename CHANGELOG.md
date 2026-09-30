@@ -2,6 +2,8 @@
 
 ## [v1.4] — 2026-09-30
 
+- Made in-game controls draggable with mouse/touch, movable by arrow keys, and collapsible with Hide/Show. Production build passes; browser verification remains pending.
+
 - Fixed numeric player-count and board-size selection, including the hotseat HUD crash.
 - Added buff strength controls and preserved configured quantities and strengths when randomizing or resizing.
 - Added username/room-code join requests with host acceptance and decline controls.

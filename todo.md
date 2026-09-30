@@ -79,6 +79,9 @@ Rules were not deployed. The game stores its state inside each room, not a separ
 
 ## 7. Latest fixes — September 30, 2026
 
+- [x] In-game controls can be dragged with mouse/touch or moved with arrow keys; Hide/Show collapses settings while keeping roll controls accessible. Panel stays within the viewport when resized.
+- [ ] Browser verification of movable controls on desktop and touch devices.
+
 - [x] Numeric player-count and board-size values fix the empty-player HUD crash; 2–4 player turn cycles are tested.
 - [x] Buff quantity and strength controls, displayed values, and preservation when randomizing/resizing.
 - [x] Username-based join requests with host Accept/Decline controls; room-code joins also require approval.

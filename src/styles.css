@@ -426,3 +426,10 @@ input:not([type]) { font: inherit; padding: 8px 10px; border-radius: 8px; border
 .room-chat .bar { flex-wrap: nowrap; }
 .room-chat input { min-width: 0; width: 100%; }
 @media (max-width: 700px) { .room-chat { bottom: 110px; width: min(260px, calc(100vw - 24px)); } .room-chat .chat-log { height: 85px; } }
+
+.movable-controls { max-height: calc(100dvh - 24px); max-width: calc(100vw - 24px); overflow: auto; }
+.controls-header { display: flex; gap: 6px; align-items: center; }
+.controls-handle { flex: 1; cursor: grab; touch-action: none; user-select: none; }
+.controls-handle:active { cursor: grabbing; }
+.controls-options { display: grid; gap: 6px; }
+.controls-options[hidden] { display: none; }

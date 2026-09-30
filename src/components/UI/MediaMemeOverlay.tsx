@@ -63,27 +63,27 @@ export function MediaMemeOverlay({ enabled }: { enabled: boolean }) {
     if (snakeMove && lastProcessedRef.current !== `snake-${snakeMove.id}`) {
       lastProcessedRef.current = `snake-${snakeMove.id}`
       const vid = SNAKE_VIDEOS[Math.floor(Math.random() * SNAKE_VIDEOS.length)]
-      setActiveMeme({
+      const timer = setTimeout(() => setActiveMeme({
         id: `snake-${snakeMove.id}`,
         type: 'snake',
         title: '🐍 BITTEN BY A SNAKE!',
         subText: 'EMOTIONAL DAMAGE! Sliding all the way down!',
         video: vid
-      })
-      return
+      }), 2600)
+      return () => clearTimeout(timer)
     }
 
     // 2. Ladder Climb -> climbing_ladder.png
     if (ladderMove && lastProcessedRef.current !== `ladder-${ladderMove.id}`) {
       lastProcessedRef.current = `ladder-${ladderMove.id}`
-      setActiveMeme({
+      const timer = setTimeout(() => setActiveMeme({
         id: `ladder-${ladderMove.id}`,
         type: 'ladder',
         title: '🪜 CLIMBING THE LADDER!',
         subText: 'Stairway to heaven! To the moon! 🚀',
         image: '/image/climbing_ladder.png'
-      })
-      return
+      }), 1000)
+      return () => clearTimeout(timer)
     }
 
     // 3. Rewind (Back tile) -> evilLarry.png

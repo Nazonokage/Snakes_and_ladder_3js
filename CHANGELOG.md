@@ -1,5 +1,17 @@
 # Changelog
 
+## [v1.4] — 2026-09-30
+
+- Fixed numeric player-count and board-size selection, including the hotseat HUD crash.
+- Added buff strength controls and preserved configured quantities and strengths when randomizing or resizing.
+- Added username/room-code join requests with host acceptance and decline controls.
+- Retained rooms during temporary network drops, restored presence on reconnect, and guarded new actions until both members are online.
+- Moved chat to a collapsible bottom-left panel and added a favicon.
+- Reorganized TODO and updated online instructions.
+- Validation: 38 automated tests and production build pass; the existing large-bundle warning remains.
+- Live two-device verification, page-reload recovery, abandoned-room cleanup, and host migration remain pending.
+
+
 ## [v1.3] — 2026-09-30
 
 ### Buff controls and dice interaction

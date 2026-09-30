@@ -3,13 +3,13 @@ import { DicePreview } from '../Scene/GameScene'
 import { useSound } from '../../utils/feedback'
 import { useMotion } from '../../store/useMotion'
 import { useGame } from '../../store/useGameStore'
-import { useOnline, onlineCommand, onlineAction } from '../../store/useOnlineStore'
+import { useOnline, onlineCommand, onlineAction, roomReady } from '../../store/useOnlineStore'
 import { MediaMemeOverlay } from './MediaMemeOverlay'
 
 export function HUD({ onEdit, onOnline }: { onEdit: () => void; onOnline: () => void }) {
   const g = useGame(), motion = useMotion(), sound = useSound(), online = useOnline()
   const inRoom = Boolean(online.roomId)
-  const myTurn = !inRoom || (online.connected && online.room?.status === 'playing' && (g.current === 0 ? online.room.host.uid : online.room.guest?.uid) === online.uid)
+  const myTurn = !inRoom || (roomReady(online) && online.room?.status === 'playing' && (g.current === 0 ? online.room.host.uid : online.room.guest?.uid) === online.uid)
   const [memes, setMemes] = useState(() => { try { return localStorage.getItem('snl.scares') !== 'off' } catch { return true } })
   const [show, setShow] = useState<string | null>(null)
   useEffect(() => {
@@ -40,7 +40,7 @@ export function HUD({ onEdit, onOnline }: { onEdit: () => void; onOnline: () => 
           {g.phase === 'IDLE' ? `🎲 ${cur.name}: Roll` : g.phase === 'DICE_ROLLING' ? 'Rolling…' : g.dice ? `Rolled ${g.dice}` : '…'}
         </button>
         {!['IDLE', 'WIN'].includes(g.phase) && <button className="skip" disabled={!myTurn || online.busy} onClick={() => command('skip')}>Skip animation ⏩</button>}
-        {inRoom && <small>{online.room?.status === 'waiting' ? 'Waiting for opponent' : online.room?.status === 'closed' ? 'Room closed · open Online to leave' : myTurn ? 'Your turn' : 'Opponent’s turn'}</small>}
+        {inRoom && <small>{online.room?.status === 'waiting' ? 'Waiting for opponent' : online.room?.status === 'closed' ? 'Room closed · open Online to leave' : !roomReady(online) ? 'Connection interrupted · waiting to reconnect' : myTurn ? 'Your turn' : 'Opponent’s turn'}</small>}
         <small>{g.phase.replace(/_/g, ' ')}</small>
       </div>
       <MediaMemeOverlay enabled={memes} />

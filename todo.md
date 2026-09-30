@@ -13,22 +13,22 @@ Checked items below mean implemented in code. See the verification section for w
 - [x] Explicit buff quantity control places the requested number on free tiles; specific-tile editor clearly labelled.
 - [x] Big red Skip animation button with instant turn resolution and sound.
 - [x] Original ghost/snake meme reaction overlay with an on/off control (procedural; no external GIF/video).
-- [x] Revised bonus distribution and New bonus map control.
-- [x] Distinct random first-row positions for each new game.
+- [x] Random buff placement with exact quantity and strength; randomize positions preserves configured effects.
+- [x] All players start on tile 1.
 - [x] Hotseat remains the default.
 
 ## 2. Online mode
 
 - [x] Online mode entry in settings and gameplay.
 - [x] Live player presence and username search.
-- [x] Automatic public-room join/create and two-player rooms.
+- [x] Public/unlisted two-player rooms; choose a host by username or room code and request to join.
 - [x] Real-time shared pawn/turn state using the host's game engine.
 - [x] Room chat with the latest 50 messages displayed.
 - [x] Active player's Skip control; snake reactions in both modes.
 - [x] @username winner display and celebration effects.
 - [x] Unlisted room codes and host-customized boards.
 - [ ] Access-controlled private rooms (public demo rules cannot provide privacy).
-- [ ] Recovery after disconnect / host migration (current rooms close).
+- [ ] Page-reload recovery, abandoned-room cleanup, and host migration.
 
 ## 3. Firebase setup
 
@@ -68,7 +68,7 @@ Rules were not deployed. The game stores its state inside each room, not a separ
 
 ## 6. Verification and deployment
 
-- [x] 24 automated tests pass, including new turn and online-payload regressions.
+- [x] 38 automated tests pass, covering turns, setup, buff generation, online payloads, join approval, and connection guards.
 - [x] Production build passes (large bundle warning remains).
 - [x] Browser check: local roll, skip and turn handoff.
 - [ ] Two-device online acceptance test after Firebase setup: matchmaking, turns, skip, chat, wins and disconnects.
@@ -76,3 +76,27 @@ Rules were not deployed. The game stores its state inside each room, not a separ
 - [ ] Real touch-device acceptance and speaker-level sound check.
 - [ ] Deploy to Vercel and repeat online acceptance tests.
 - [x] Update README and CHANGELOG with features, setup and honest verification status.
+
+## 7. Latest fixes — September 30, 2026
+
+- [x] Numeric player-count and board-size values fix the empty-player HUD crash; 2–4 player turn cycles are tested.
+- [x] Buff quantity and strength controls, displayed values, and preservation when randomizing/resizing.
+- [x] Username-based join requests with host Accept/Decline controls; room-code joins also require approval.
+- [x] Temporary network drops retain the room; Firebase reconnects automatically and restores presence. New roll/skip actions require both members online. An in-progress animation may finish while disconnected.
+- [x] Retry connection control in the online panel. Explicitly leaving still closes a member’s room; cancelling a join request does not close the host’s room.
+- [x] Collapsible room chat at bottom left, with mobile positioning above the game controls.
+- [x] Add an explicit favicon to address the missing icon request.
+- [ ] Browser verification of recent setup, buff, matchmaking, chat layout, and reconnection changes.
+- [ ] Two-device network-drop test for host and guest, including a drop during an animation and return after a win.
+
+## 8. Console report triage
+
+| Report | Status |
+| --- | --- |
+| HUD cannot read player name | Fixed invalid numeric selector values that emptied the player list. |
+| Missing favicon | Added SVG favicon and page link. |
+| contentscript.js listener warnings / ObjectMultiplex | Likely browser-extension output; reproduce with extensions disabled if it persists. |
+| React DevTools download message | Informational development message. |
+| WebGL context lost | Reported alongside the crash; verify whether it recurs after the fix. |
+
+Checked items describe implemented behavior. Mocked automated tests do not replace live Firebase acceptance tests. Existing Firebase verification above records prior checks; no rules or deployment were changed in this update.

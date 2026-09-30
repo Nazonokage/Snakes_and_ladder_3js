@@ -63,12 +63,12 @@ Implementation references: [Firebase read/write and transactions](https://fireba
 ## Play online
 
 1. Open **Online mode** from setup or gameplay. Enter a username and connect as a guest, or supply email/password to sign in. Select **Create account / upgrade guest** to register or preserve a guest's identity when upgrading it.
-2. **Find opponent** joins an available public room or creates a waiting room. Search live players by username and select **Play** beside an available opponent.
-3. **Create unlisted room** hides it from matchmaking. Share its code for direct joining. With public demo rules this is an unlisted room, **not an access-controlled private room**.
-4. The host's current board draft and random starting positions are shared with both players. Customize/import a board before creating the room; editing is disabled during an online match.
-5. Close the lobby to play. Only the active player can Roll or Skip. Open **Online · chat & room** to send room messages; the latest 50 are displayed.
+2. Choose **Host public room**, or search live players by username and select **Request to join** beside an available host. The host must accept a request before the match starts.
+3. **Create unlisted room** hides it from matchmaking. Share its code to receive join requests for host approval. With public demo rules this is an unlisted room, **not an access-controlled private room**.
+4. The host's current board draft and tile-1 starting positions are shared with both players. Customize/import a board before creating the room; editing is disabled during an online match.
+5. Close the lobby to play. Only the active player can Roll or Skip. Use the collapsible bottom-left chat to send room messages; the latest 50 are displayed.
 6. A win shows `@username` and celebration effects, then records one leaderboard win per room. Rankings count wins, with username ordering for ties.
-7. Leave the room after a game to find another opponent. Leaving or a detected connection loss closes the room; there is no host migration or mid-game recovery. Both players should keep the host's tab active because the host runs the animations and turn engine.
+7. Leave the room after a game to find another opponent. Explicitly leaving closes the room. Temporary connection loss keeps the room open: Firebase automatically reconnects and new actions wait for both players to return. An in-progress animation can finish while disconnected. The online panel includes Retry connection. Page reload recovery, abandoned-room cleanup, and host migration remain pending. Both players should keep the host's tab active because the host runs the animations and turn engine.
 
 The database uses `presence`, `rooms`, `messages/{roomId}`, and `leaderboard/{roomId}`. Anonymous accounts persist in the current browser; clearing browser data or signing out can lose access to that guest identity. Email accounts can sign in again on another device. Firebase Authentication stores the display-name profile. Password reset, avatars, verified unique usernames and production moderation are not implemented.
 

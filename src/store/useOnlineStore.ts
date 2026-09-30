@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { EmailAuthProvider, linkWithCredential, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth'
-import { ref, onValue, onDisconnect, set, update, remove, push, query, limitToLast, runTransaction, serverTimestamp, get } from 'firebase/database'
+import { ref, onValue, onDisconnect, set, update, remove, push, query, limitToLast, runTransaction, serverTimestamp, get, goOnline } from 'firebase/database'
 import { auth, database } from '../lib/firebase'
 import { useGame } from './useGameStore'
 import { useDraft } from './useDraftStore'
@@ -9,7 +9,7 @@ import { parseSharedGame } from '../utils/onlineProtocol'
 
 type Member = { uid: string; name: string }
 type Command = { uid: string; action: 'roll' | 'skip'; rollId: number; id: string }
-export type Room = { host: Member; guest?: Member; status: 'waiting' | 'playing' | 'closed' | 'won'; private: boolean; state: string; command?: Command }
+export type Room = { host: Member; guest?: Member; status: 'waiting' | 'playing' | 'closed' | 'won'; private: boolean; state: string; requests?: Record<string, Member>; command?: Command }
 type Presence = Member & { room: string }
 type Message = { name: string; text: string }
 type Win = { uid: string; name: string; at: number }
@@ -95,7 +95,7 @@ function watchRoom(id: string) {
       void update(ref(db(), `rooms/${id}`), { status: 'playing', state: snapshot() }).catch(report)
     }
     const cmd = room.command, game = useGame.getState()
-    if (room.status !== 'playing' || !cmd || cmd.id === lastCommand) return
+    if (room.status !== 'playing' || !roomReady(useOnline.getState()) || !cmd || cmd.id === lastCommand) return
     lastCommand = cmd.id
     const activeUid = game.current === 0 ? room.host.uid : room.guest?.uid
     if (cmd.uid !== activeUid || cmd.rollId !== game.rollId) return
@@ -129,7 +129,7 @@ export async function createRoom(privateRoom = false) {
   if (!me.connected || me.roomId) throw new Error('Connect and leave your current room first')
   const roomRef = push(ref(db(), 'rooms')), id = roomRef.key!
   useGame.getState().startGame(useDraft.getState().present, [me.name, 'Waiting…'])
-  await onDisconnect(ref(db(), `rooms/${id}/status`)).set('closed')
+
   await set(roomRef, { host: { uid: me.uid, name: me.name }, status: 'waiting', private: privateRoom, state: snapshot() })
   watchRoom(id)
 }
@@ -140,10 +140,10 @@ export async function joinRoom(id: string) {
   await get(ref(db(), `rooms/${id}`))
   const result = await runTransaction(ref(db(), `rooms/${id}`), (room: Room | null) => {
     if (!room || room.status !== 'waiting' || room.guest || room.host.uid === me.uid) return
-    return { ...room, guest: { uid: me.uid, name: me.name } }
+    return { ...room, requests: { ...room.requests, [me.uid]: { uid: me.uid, name: me.name } } }
   }, { applyLocally: false })
   if (!result.committed) throw new Error('Room is unavailable or already full')
-  await onDisconnect(ref(db(), `rooms/${id}/status`)).set('closed')
+
   useGame.getState().startGame(useDraft.getState().present, [me.name, 'Opponent'])
   watchRoom(id)
 }
@@ -153,21 +153,22 @@ export async function leaveRoom() {
   useOnline.setState({ roomId: '', room: null, messages: [] })
   useGame.getState().startGame(useDraft.getState().present, ['Player 1', 'Player 2'])
   if (me.roomId) {
-    await set(ref(db(), `rooms/${me.roomId}/status`), 'closed')
-    await onDisconnect(ref(db(), `rooms/${me.roomId}/status`)).cancel()
+    if (me.room?.host.uid === me.uid || me.room?.guest?.uid === me.uid) await set(ref(db(), `rooms/${me.roomId}/status`), 'closed')
+    else await remove(ref(db(), `rooms/${me.roomId}/requests/${me.uid}`))
+
     await update(ref(db(), `presence/${me.uid}`), { room: '' })
   }
 }
 export async function onlineCommand(action: 'roll' | 'skip') {
   const me = useOnline.getState(), game = useGame.getState(), room = me.room
   const active = game.current === 0 ? room?.host.uid : room?.guest?.uid
-  if (!me.connected || room?.status !== 'playing' || active !== me.uid) return
+  if (!roomReady(me) || room?.status !== 'playing' || active !== me.uid) return
   void unlockSound()
   await set(ref(db(), `rooms/${me.roomId}/command`), { uid: me.uid, action, rollId: game.rollId, id: crypto.randomUUID() })
 }
 export async function sendChat(text: string) {
   const me = useOnline.getState(), clean = text.trim().slice(0, 300)
-  if (!clean || !me.connected || !me.roomId) return
+  if (!clean || !me.connected || !me.roomId || !me.room || me.room.status === 'closed' || ![me.room.host.uid, me.room.guest?.uid].includes(me.uid)) throw new Error('Connect to an active room before sending chat')
   await set(push(ref(db(), `messages/${me.roomId}`)), { name: me.name, text: clean, at: serverTimestamp() })
 }
 export async function onlineAction(fn: () => Promise<unknown>) {
@@ -183,4 +184,21 @@ export async function findMatch() {
 export async function logoutOnline() {
   await disconnectOnline()
   if (auth) await signOut(auth)
+}
+
+export function roomReady(me: OnlineState): boolean {
+  const room = me.room
+  return Boolean(me.connected && room?.guest && [room.host.uid, room.guest.uid].every(uid => me.people.some(p => p.uid === uid && p.room === me.roomId)))
+}
+export function reconnectOnline() { goOnline(db()) }
+export async function respondToRequest(uid: string, accept: boolean) {
+  const me = useOnline.getState()
+  if (!me.connected || me.room?.host.uid !== me.uid) throw new Error('Only the connected host can respond')
+  const result = await runTransaction(ref(db(), 'rooms/' + me.roomId), (room: Room | null) => {
+    if (!room || room.host.uid !== me.uid || room.status !== 'waiting' || room.guest || !room.requests?.[uid]) return
+    const member = room.requests[uid], requests = { ...room.requests }
+    delete requests[uid]
+    return accept ? { ...room, guest: member, requests: {} } : { ...room, requests }
+  }, { applyLocally: false })
+  if (!result.committed) throw new Error('This request is no longer available')
 }

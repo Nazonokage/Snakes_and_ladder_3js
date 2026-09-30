@@ -420,3 +420,9 @@ input:not([type]) { font: inherit; padding: 8px 10px; border-radius: 8px; border
 }
 
 
+
+.room-chat { position: fixed; bottom: 12px; left: 12px; width: min(310px, calc(100vw - 24px)); z-index: 15; pointer-events: auto; }
+.room-chat .chat-log { height: 130px; overflow-y: auto; overflow-wrap: anywhere; }
+.room-chat .bar { flex-wrap: nowrap; }
+.room-chat input { min-width: 0; width: 100%; }
+@media (max-width: 700px) { .room-chat { bottom: 110px; width: min(260px, calc(100vw - 24px)); } .room-chat .chat-log { height: 85px; } }

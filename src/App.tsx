@@ -1,3 +1,4 @@
+import { RoomChat } from './components/UI/RoomChat'
 import { useState } from 'react'
 import { GameScene } from './components/Scene/GameScene'
 import { HUD } from './components/UI/HUD'
@@ -15,6 +16,7 @@ export default function App() {
     <>
       <div className="canvas"><GameScene /></div>
       {!setup && <HUD onEdit={() => setOpen(true)} onOnline={() => setOnlineOpen(true)} />}
+      <RoomChat />
       {onlineOpen && <OnlinePanel onClose={() => setOnlineOpen(false)} />}
       {motionDemo && <MotionDemo />}
       {(setup || open) && <CustomizerModal onOnline={() => { setSetup(false); setOpen(false); setOnlineOpen(true) }} setup={setup} onClose={() => { setSetup(false); setOpen(false) }} />}

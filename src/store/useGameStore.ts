@@ -64,8 +64,8 @@ export const useGame = create<GameState>((set, get) => {
       if (sp) {
         set({ phase: 'RESOLVING_SPECIAL' }); emit('special', p.pos)
         if (sp.type === 'bonus') { set({ extra: true }); say('⭐ Bonus roll!') }
-        else if (sp.type === 'skip') { patch(s.current, x => ({ ...x, skip: x.skip + (sp.value ?? 1) })); say('⏭ Skip next turn') }
-        else if (sp.type === 'freeze') { patch(s.current, x => ({ ...x, skip: x.skip + (sp.value ?? 2) })); say('🧊 Frozen!') }
+        else if (sp.type === 'skip') { patch(s.current, x => ({ ...x, skip: x.skip + (sp.value ?? 1) })); say(`⏭ Skip ${sp.value ?? 1} turn(s)`) }
+        else if (sp.type === 'freeze') { patch(s.current, x => ({ ...x, skip: x.skip + (sp.value ?? 2) })); say(`🧊 Frozen for ${sp.value ?? 2} turn(s)!`) }
         else { const t = Math.max(1, p.pos - (sp.value ?? 3)); say(`↩ Back ${p.pos - t} tiles`); if (t !== p.pos) { go([mv('rewind', p.pos, t)], { mark: s.mark && { from: s.mark.from, to: t } }); return } }
       }
     }

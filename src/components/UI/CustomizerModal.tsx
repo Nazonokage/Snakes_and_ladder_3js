@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDraft } from '../../store/useDraftStore'
 import { useGame } from '../../store/useGameStore'
 import { makeBoard, SPECIAL_TYPES } from '../../utils/boardGenerator'
-import { addSpecials } from '../../utils/specials'
+import { addSpecials, randomizeSpecials } from '../../utils/specials'
 import { parseDoc, toDoc, MAX_CHARS } from '../../utils/boardDoc'
 import type { BoardConfig, SpecialType } from '../../types/game'
 
@@ -36,15 +36,19 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
   const [cell, setCell] = useState(5)
   const [type, setType] = useState<SpecialType>('bonus')
   const [quantity, setQuantity] = useState('1')
-  const addBatch = () => { try { commit(addSpecials(b, type, Number(quantity))) } catch (e) { setErr((e as Error).message) } }
+  const [strength, setStrength] = useState('1')
+  const effectValue = type === 'bonus' ? 1 : Number(strength)
+  const addBatch = () => { try { commit(addSpecials(b, type, Number(quantity), Math.random, effectValue)) } catch (e) { setErr((e as Error).message) } }
   const [err, setErr] = useState(d.notice)
   const file = useRef<HTMLInputElement>(null)
   const commit = (nb: BoardConfig) => setErr(d.commit(nb) ?? '')
   const regen = (size = b.size) => {
-    const sp = Object.fromEntries(Object.entries(b.specials).filter(([k]) => Number(k) <= size * size - 1))
-    commit(makeBoard(size, density, Date.now(), b.cellColors, sp))
+    try {
+      const sp = size === b.size ? b.specials : randomizeSpecials({ ...b, size, snakes: [], ladders: [] }).specials
+      commit(makeBoard(size, density, Date.now(), b.cellColors, sp))
+    } catch (e) { setErr((e as Error).message) }
   }
-  const addSpecial = () => commit({ ...b, specials: { ...b.specials, [cell]: { cell, type, value: type === 'back' ? 3 : type === 'freeze' ? 2 : 1 } } })
+  const addSpecial = () => commit({ ...b, specials: { ...b.specials, [cell]: { cell, type, value: effectValue } } })
   const removeSpecial = (c: number) => { const s = { ...b.specials }; delete s[c]; commit({ ...b, specials: s }) }
   const exportJson = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(toDoc(b), null, 2)], { type: 'application/json' }))
@@ -95,7 +99,7 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
             <legend className="section-title">Board Grid &amp; Theme</legend>
             <div className="grid-2col">
               <label>Board size
-                <select value={b.size} onChange={e => regen(Number(e.target.value))}>{[6, 7, 8, 9, 10, 11, 12].map(n => <option key={n}>{n} × {n}</option>)}</select>
+                <select value={b.size} onChange={e => regen(Number(e.target.value))}>{[6, 7, 8, 9, 10, 11, 12].map(n => <option key={n} value={n}>{n} × {n}</option>)}</select>
               </label>
               <label>Density {density.toFixed(2)}
                 <input type="range" min={0} max={1} step={0.05} value={density} onChange={e => setDensity(Number(e.target.value))} />
@@ -115,7 +119,7 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
             </div>
 
             <div className="grid-2col btn-row">
-              <button onClick={() => commit(makeBoard(b.size, density, Date.now(), b.cellColors))}>🎲 New bonus map</button>
+              <button onClick={() => { try { commit(randomizeSpecials(b)) } catch (e) { setErr((e as Error).message) } }}>🎲 Randomize buff positions</button>
               <button onClick={() => regen()}>⚡ Regenerate ({b.snakes.length}🐍 {b.ladders.length}🪜)</button>
             </div>
           </fieldset>
@@ -125,14 +129,17 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
             <div className="specials-grid">
               <div className="input-group-row">
                 <label className="flex-2">Effect
-                  <select value={type} onChange={e => setType(e.target.value as SpecialType)}>{SPECIAL_TYPES.map(t => <option key={t}>{t}</option>)}</select>
+                  <select value={type} onChange={e => { const next = e.target.value as SpecialType; setType(next); setStrength(next === 'back' ? '3' : next === 'freeze' ? '2' : '1') }}>{SPECIAL_TYPES.map(t => <option key={t}>{t}</option>)}</select>
                 </label>
                 <label className="flex-1">Qty
                   <input type="number" min={1} max={40} step={1} value={quantity} onChange={e => setQuantity(e.target.value)} />
                 </label>
-                <button className="btn-action" onClick={addBatch}>Add</button>
+                <button className="btn-action" onClick={addBatch}>Add randomly</button>
               </div>
-              <p className="hint">Choose an effect and quantity to place randomly on free tiles.</p>
+              {type !== 'bonus' && <label>Strength ({type === 'back' ? 'tiles back' : 'turns skipped'})
+                <input type="number" min={1} max={6} step={1} value={strength} onChange={e => setStrength(e.target.value)} />
+              </label>}
+              <p className="hint">Add the selected quantity and strength on random free tiles. Existing effects stay. Bonus grants one extra roll. Randomize buff positions keeps all quantities and strengths.</p>
               <div className="input-group-row">
                 <label className="flex-2">Specific tile
                   <input type="number" min={2} max={b.size * b.size - 1} value={cell} onChange={e => setCell(Number(e.target.value))} />
@@ -146,7 +153,7 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
                 <div className="chips">
                   {Object.values(b.specials).map(s => (
                     <span key={s.cell} className="chip">
-                      {s.cell}: {s.type}
+                      {s.cell}: {s.type} ({s.value ?? (s.type === 'back' ? 3 : s.type === 'freeze' ? 2 : 1)} {s.type === 'back' ? 'tiles' : s.type === 'bonus' ? 'extra roll' : 'turns'})
                       <button aria-label={`remove ${s.cell}`} onClick={() => removeSpecial(s.cell)}>×</button>
                     </span>
                   ))}
@@ -159,7 +166,7 @@ export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose:
             <legend className="section-title">Players Setup</legend>
             <div className="players-config">
               <label>Number of Players
-                <select value={names.length} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 4].map(n => <option key={n}>{n} Players</option>)}</select>
+                <select value={names.length} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 4].map(n => <option key={n} value={n}>{n} Players</option>)}</select>
               </label>
               <div className="player-inputs">
                 {names.map((n, i) => (

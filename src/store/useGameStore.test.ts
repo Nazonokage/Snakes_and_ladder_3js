@@ -14,6 +14,13 @@ const roll = (dice: number) => {
 beforeEach(() => { vi.useFakeTimers(); useMotion.setState({ mode: 'full' }); start() })
 afterEach(() => { useGame.getState().startGame(board(), ['A', 'B']); vi.useRealTimers() })
 describe('turn skipping', () => {
+  it.each(['skip', 'freeze', 'back'] as const)('uses the configured %s strength during play', type => {
+    start({ ...board(), specials: { 9: { cell: 9, type, value: 5 } } }, 8)
+    roll(1); useGame.getState().skipAnimation()
+    const player = useGame.getState().players[0]
+    if (type === 'back') expect(player.pos).toBe(4)
+    else expect(player.skip).toBe(5)
+  })
   it('resolves a roll and leaves no delayed moves', () => {
     roll(3); useGame.getState().skipAnimation()
     expect(useGame.getState().players[0].pos).toBe(4)

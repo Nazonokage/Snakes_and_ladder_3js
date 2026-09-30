@@ -22,3 +22,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local Firebase configuration notes supplied by the project owner.
+apiinfo.md

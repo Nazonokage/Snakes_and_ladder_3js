@@ -36,9 +36,13 @@ export function makeBoard(size: number, density: number, seed: number, colors = 
   const rng = mulberry32(seed)
   const sp: Record<number, SpecialEffect> = specials ? { ...specials } : {}
   if (!specials) {
-    SPECIAL_TYPES.forEach(type => {
-      const cell = 3 + Math.floor(rng() * (total - 12))
-      if (!sp[cell]) sp[cell] = { cell, type, value: type === 'back' ? 3 : type === 'freeze' ? 2 : 1 }
+    const types: SpecialType[] = ['bonus', 'bonus', 'bonus', 'back', 'skip', 'freeze']
+    types.forEach((type, i) => {
+      const lo = type === 'bonus' ? 3 + Math.floor(i * (total - 6) / 3) : 3
+      const width = type === 'bonus' ? Math.floor((total - 6) / 3) : total - 6
+      let cell = lo + Math.floor(rng() * width)
+      while (sp[cell]) cell = cell >= total - 2 ? 3 : cell + 1
+      sp[cell] = { cell, type, value: type === 'back' ? 3 : type === 'freeze' ? 2 : 1 }
     })
   }
   const used = new Set<number>(Object.keys(sp).map(Number))

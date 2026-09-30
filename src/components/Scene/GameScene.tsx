@@ -7,7 +7,7 @@ import * as THREE from 'three'
 import { useGame } from '../../store/useGameStore'
 import { TILE, cellToRC, cellToWorld, connectionCurve } from '../../utils/gridMath'
 import { playFeedback } from '../../utils/feedback'
-import { gentleMotion } from '../../store/useMotion'
+import { gentleMotion, motionOff, useMotion } from '../../store/useMotion'
 import { createMoveAnimation, DICE_SECONDS, mouthOpen, pawnStepCues, rungCount, snakeProgress, SNAKE_EXIT_START, tailRadius } from '../../utils/motion'
 import type { Connection, FxKind } from '../../types/game'
 
@@ -60,6 +60,7 @@ function Rise({ children }: { children: ReactNode }) {
     const g = r.current; if (!g) return
     const t = useGame.getState().shuffling ? 0.001 : 1
     if (Math.abs(t - g.scale.y) < 0.002) { g.scale.y = t; return }
+    if (motionOff()) { g.scale.y = t; return }
     g.scale.y += (t - g.scale.y) * Math.min(1, dt * (reduced() ? 60 : 4))
   })
   return <group ref={r} scale={[1, 0.001, 1]}>{children}</group>
@@ -96,7 +97,7 @@ function Snake({ c, size }: { c: Connection; size: number }) {
   useFrame(({ clock }) => {
     const geometry = body.current, base = original.current
     if (!geometry || !base) return
-    const t = clock.elapsedTime, phase = c.from * 0.73, quiet = reduced()
+    const t = motionOff() ? 0 : clock.elapsedTime, phase = c.from * 0.73, quiet = reduced()
     const eating = SNAKE_ACTION.from === c.from
     const seconds = SNAKE_ACTION.seconds, progress = snakeProgress(seconds)
     const swelling = eating && seconds >= 1.6 && seconds < SNAKE_EXIT_START
@@ -123,7 +124,7 @@ function Snake({ c, size }: { c: Connection; size: number }) {
       const flick = cycle < 1.6 ? Math.pow(Math.sin(cycle / 1.6 * Math.PI * 2), 2) : 0
       tongueRef.current.scale.z = 0.04 + flick * 0.96
       tongueRef.current.rotation.y = quiet ? 0 : Math.sin(t * 15) * 0.1
-      tongueRef.current.visible = !eating && flick > 0.02
+      tongueRef.current.visible = !motionOff() && !eating && flick > 0.02
     }
   })
   return (
@@ -175,6 +176,7 @@ function Pawn({ i }: { i: number }) {
   const color = useGame(s => s.players[i]?.color)
   useFrame((_, dt) => {
     const s = useGame.getState(), grp = g.current, p = s.players[i]; if (!grp || !p) return
+    if (motionOff() && !s.spectator && !['IDLE', 'WIN'].includes(s.phase)) { s.skipAnimation(); return }
     const o = OFF[i], q = st.current, m = s.current === i ? s.queue[0] : undefined
     if (s.current === i) SNAKE_ACTION.from = 0
     if (!m) {
@@ -191,7 +193,7 @@ function Pawn({ i }: { i: number }) {
     // Clamp a background-tab gap rather than consuming a whole move in one frame.
     q.t += Math.min(dt, 0.05)
     if (m.kind === 'snake') { SNAKE_ACTION.from = m.from; SNAKE_ACTION.seconds = q.t }
-    const pose = q.animation!.sample(q.t, reduced())
+    const pose = q.animation!.sample(motionOff() ? q.animation!.duration : q.t, reduced())
     if (m.kind === 'hop' || m.kind === 'rewind') {
       for (const cue of pawnStepCues(q.soundTime, q.t, q.animation!.duration)) playFeedback(cue)
     }
@@ -239,6 +241,7 @@ function Trail() {
     const s = useGame.getState(), mesh = m.current, q = st.current; if (!mesh) return
     const key = s.gameId * 1000 + s.rollId
     if (key !== q.key) { q.key = key; q.n = 0; mesh.count = 0; q.last.set(1e9, 0, 0) }
+    if (motionOff()) { mesh.count = 0; return }
     if (!s.queue[0] || s.queue[0].kind === 'snake' || q.n >= TN) return
     const p = PAWN_POS[s.current]; if (p.distanceToSquared(q.last) < 0.03) return
     ;(mesh.material as THREE.MeshBasicMaterial).color.set(s.players[s.current].color)
@@ -289,13 +292,17 @@ function Dice() {
       q.end.set(c.x + (Math.random() - 0.5) * 1.2, c.y + 0.5, c.z + (Math.random() - 0.5) * 1.2)
       q.axis.set(0.6 + Math.random(), 0.3 + Math.random(), 0.6 + Math.random()).normalize()
     }
+    if (s.phase !== 'DICE_ROLLING' && s.dice) {
+      if (q.active || q.id !== s.rollId) { g.position.set(c.x, c.y + 0.5, c.z); DICE_POSE.position.set(0, 0.5, 0) }
+      q.active = false; q.id = s.rollId; g.quaternion.copy(TARGET[s.dice]); DICE_POSE.rotation.copy(g.quaternion)
+    }
     if (!q.active || s.dice == null) return
     const previousTime = q.t
     q.t += Math.min(dt, 0.05)
     for (const bounce of [0.48, 0.7, 0.84]) {
       if (previousTime < bounce * DICE_SECONDS && q.t >= bounce * DICE_SECONDS) playFeedback('land')
     }
-    const k = Math.min(1, q.t / DICE_SECONDS)
+    const k = motionOff() ? 1 : Math.min(1, q.t / DICE_SECONDS)
     g.position.lerpVectors(q.start, q.end, THREE.MathUtils.smoothstep(k, 0, 0.88))
     let height = 0
     if (k < 0.48) height = 2.8 * Math.sin(Math.PI * k / 0.48)
@@ -336,20 +343,20 @@ function PreviewDie() {
   })
   return <group ref={ref}><DiceAppearance /></group>
 }
-export function DicePreview() {
+export function DicePreview({ onRoll, disabled }: { onRoll: () => void; disabled: boolean }) {
   const phase = useGame(s => s.phase), value = useGame(s => s.dice)
-  return <section className="dice-preview panel" aria-label="Dice animation">
+  return <button type="button" className="dice-preview panel" aria-label="Roll dice" disabled={disabled} onClick={onRoll}>
     <strong>{phase === 'DICE_ROLLING' ? 'Rolling the dice…' : value ? 'Rolled ' + value : 'Ready to roll'}</strong>
     <div className="dice-viewport" aria-hidden="true">
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [4, 4.8, 6], fov: 42 }} onCreated={({ camera }) => camera.lookAt(0, 1.3, 0)}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 8, 0.01], fov: 42 }} onCreated={({ camera }) => camera.lookAt(0, 0, 0)}>
         <ambientLight intensity={1.3} />
         <directionalLight position={[3, 6, 4]} intensity={2} castShadow shadow-mapSize={[256, 256]} />
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[3.8, 3.8]} /><meshStandardMaterial color="#246249" roughness={1} /></mesh>
         <PreviewDie />
       </Canvas>
     </div>
-    <small>{phase === 'DICE_ROLLING' ? 'Toss · tumble · settle' : 'Watch your roll here'}</small>
-  </section>
+    <small>{phase === 'DICE_ROLLING' ? 'Toss · tumble · settle' : disabled ? 'Wait for your turn' : 'Click or tap to roll'}</small>
+  </button>
 }
 
 /* ---------- VFX: one pooled particle system (64 cap, zero per-frame allocation, off under reduced motion) ---------- */
@@ -381,6 +388,7 @@ function Fx() {
   }, [fx, col])
   useFrame((_, dt) => {
     const m = mesh.current; if (!m || !busy.current) return
+    if (motionOff()) { pool.current.forEach(q => { q.life = 0 }) }
     let alive = 0
     pool.current.forEach((q, i) => {
       if (q.life > 0) { alive++; q.life -= dt; q.v.y -= 4 * dt; q.p.addScaledVector(q.v, dt) }
@@ -419,6 +427,7 @@ function BoardFraming({ boardSize }: { boardSize: number }) {
 }
 
 export function GameScene() {
+  const mode = useMotion(s => s.mode)
   const size = useGame(s => s.board.size)
   return (
     <Canvas key={size} shadows dpr={[1, 2]} gl={{ powerPreference: 'high-performance' }} camera={{ position: [0, size * 1.25, size * 0.95], fov: 45 }}>
@@ -428,7 +437,7 @@ export function GameScene() {
       <directionalLight position={[8, 14, 6]} intensity={1.3} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
       {new URLSearchParams(location.search).has('perf') && <PerfProbe />}
       <Board /><Tray /><Pawns /><Connections /><Marks /><Trail /><Dice /><Fx />
-      <OrbitControls enableDamping dampingFactor={0.07} maxPolarAngle={Math.PI / 2.2} minDistance={6} maxDistance={40} />
+      <OrbitControls enableDamping={mode !== 'off'} dampingFactor={0.07} maxPolarAngle={Math.PI / 2.2} minDistance={6} maxDistance={40} />
     </Canvas>
   )
 }

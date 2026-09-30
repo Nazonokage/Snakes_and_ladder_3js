@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDraft } from '../../store/useDraftStore'
 import { useGame } from '../../store/useGameStore'
 import { makeBoard, SPECIAL_TYPES } from '../../utils/boardGenerator'
+import { addSpecials } from '../../utils/specials'
 import { parseDoc, toDoc, MAX_CHARS } from '../../utils/boardDoc'
 import type { BoardConfig, SpecialType } from '../../types/game'
 
-export function CustomizerModal({ onClose, setup = false }: { onClose: () => void; setup?: boolean }) {
+export function CustomizerModal({ onClose, onOnline, setup = false }: { onClose: () => void; onOnline: () => void; setup?: boolean }) {
   const panel = useRef<HTMLDivElement>(null)
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null)
   const [position, setPosition] = useState({ x: 12, y: 12 })
@@ -33,7 +34,9 @@ export function CustomizerModal({ onClose, setup = false }: { onClose: () => voi
   useEffect(() => { if (setup) start(b, names) }, [b, names, setup, start]) // live board preview behind the setup panel
   const [density, setDensity] = useState(0.5)
   const [cell, setCell] = useState(5)
-  const [type, setType] = useState<SpecialType>('skip')
+  const [type, setType] = useState<SpecialType>('bonus')
+  const [quantity, setQuantity] = useState('1')
+  const addBatch = () => { try { commit(addSpecials(b, type, Number(quantity))) } catch (e) { setErr((e as Error).message) } }
   const [err, setErr] = useState(d.notice)
   const file = useRef<HTMLInputElement>(null)
   const commit = (nb: BoardConfig) => setErr(d.commit(nb) ?? '')
@@ -85,38 +88,100 @@ export function CustomizerModal({ onClose, setup = false }: { onClose: () => voi
           <button className="setup-collapse" onClick={() => setCollapsed(v => !v)} aria-expanded={!collapsed} aria-controls="setup-options" aria-label={collapsed ? 'Expand settings' : 'Minimize settings'}>{collapsed ? '+' : '−'}</button>
         </header> : <h2>Board editor <span className="tag">Draft only</span></h2>}
         <div id={setup ? 'setup-options' : undefined} className="modal-body" hidden={setup && collapsed}>
-        <p className="hint">{setup ? 'Changes preview live. Drag the board to rotate; scroll or pinch to zoom.' : 'Edit your draft, then choose Apply & restart to use it.'}</p>
-        <label>Board size
-          <select value={b.size} onChange={e => regen(Number(e.target.value))}>{[6, 7, 8, 9, 10, 11, 12].map(n => <option key={n}>{n}</option>)}</select>
-        </label>
-        <div className="colors">
-          {(['primary', 'secondary', 'special'] as const).map(k => (
-            <label key={k + b.cellColors[k]}>{k}
-              <input type="color" defaultValue={b.cellColors[k]} onBlur={e => { if (e.target.value !== b.cellColors[k]) commit({ ...b, cellColors: { ...b.cellColors, [k]: e.target.value } }) }} />
-            </label>
-          ))}
-        </div>
-        <label>Density {density.toFixed(2)}<input type="range" min={0} max={1} step={0.05} value={density} onChange={e => setDensity(Number(e.target.value))} /></label>
-        <button onClick={() => regen()}>Regenerate snakes &amp; ladders ({b.snakes.length}🐍 {b.ladders.length}🪜)</button>
-        <div className="specials">
-          <input type="number" min={2} max={b.size * b.size - 1} value={cell} onChange={e => setCell(Number(e.target.value))} />
-          <select value={type} onChange={e => setType(e.target.value as SpecialType)}>{SPECIAL_TYPES.map(t => <option key={t}>{t}</option>)}</select>
-          <button onClick={addSpecial}>Add</button>
-        </div>
-        <div className="chips">{Object.values(b.specials).map(s => <span key={s.cell} className="chip">{s.cell}: {s.type}<button aria-label={`remove ${s.cell}`} onClick={() => removeSpecial(s.cell)}>×</button></span>)}</div>
-        <label>Players
-          <select value={names.length} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 4].map(n => <option key={n}>{n}</option>)}</select>
-        </label>
-        {names.map((n, i) => <input key={i} value={n} maxLength={14} aria-label={`Player ${i + 1} name`} onChange={e => setNames(names.map((x, k) => (k === i ? e.target.value : x)))} />)}
-        {err && <p className="err" role="alert">{err}</p>}
-        <div className="bar">
-          <button disabled={!d.past.length} onClick={d.undo}>Undo</button>
-          <button disabled={!d.future.length} onClick={d.redo}>Redo</button>
-          <button onClick={exportJson}>Export</button>
-          <button onClick={() => file.current?.click()}>Import</button>
-          <button onClick={() => { if (confirm('Reset all draft changes?')) d.reset() }}>Reset</button>
-          <input ref={file} type="file" accept="application/json" hidden onChange={e => void importJson(e.target.files?.[0])} />
-        </div>
+          <p className="hint">{setup ? 'Changes preview live. Drag the board to rotate; scroll or pinch to zoom.' : 'Edit your draft, then choose Apply & restart to use it.'}</p>
+          <button className="btn-online" onClick={onOnline}>🌐 Online mode · lobby &amp; accounts</button>
+
+          <fieldset className="card-section">
+            <legend className="section-title">Board Grid &amp; Theme</legend>
+            <div className="grid-2col">
+              <label>Board size
+                <select value={b.size} onChange={e => regen(Number(e.target.value))}>{[6, 7, 8, 9, 10, 11, 12].map(n => <option key={n}>{n} × {n}</option>)}</select>
+              </label>
+              <label>Density {density.toFixed(2)}
+                <input type="range" min={0} max={1} step={0.05} value={density} onChange={e => setDensity(Number(e.target.value))} />
+              </label>
+            </div>
+
+            <div className="colors-group">
+              <span className="sub-label">Cell Colors</span>
+              <div className="colors-swatches">
+                {(['primary', 'secondary', 'special'] as const).map(k => (
+                  <label key={k + b.cellColors[k]} className="color-swatch-label">
+                    <input type="color" defaultValue={b.cellColors[k]} onBlur={e => { if (e.target.value !== b.cellColors[k]) commit({ ...b, cellColors: { ...b.cellColors, [k]: e.target.value } }) }} />
+                    <span>{k}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid-2col btn-row">
+              <button onClick={() => commit(makeBoard(b.size, density, Date.now(), b.cellColors))}>🎲 New bonus map</button>
+              <button onClick={() => regen()}>⚡ Regenerate ({b.snakes.length}🐍 {b.ladders.length}🪜)</button>
+            </div>
+          </fieldset>
+
+          <fieldset className="card-section">
+            <legend className="section-title">Buffs &amp; Penalties ({Object.keys(b.specials).length} squares)</legend>
+            <div className="specials-grid">
+              <div className="input-group-row">
+                <label className="flex-2">Effect
+                  <select value={type} onChange={e => setType(e.target.value as SpecialType)}>{SPECIAL_TYPES.map(t => <option key={t}>{t}</option>)}</select>
+                </label>
+                <label className="flex-1">Qty
+                  <input type="number" min={1} max={40} step={1} value={quantity} onChange={e => setQuantity(e.target.value)} />
+                </label>
+                <button className="btn-action" onClick={addBatch}>Add</button>
+              </div>
+              <p className="hint">Choose an effect and quantity to place randomly on free tiles.</p>
+              <div className="input-group-row">
+                <label className="flex-2">Specific tile
+                  <input type="number" min={2} max={b.size * b.size - 1} value={cell} onChange={e => setCell(Number(e.target.value))} />
+                </label>
+                <button className="btn-action" onClick={addSpecial}>Set tile effect</button>
+              </div>
+            </div>
+
+            {Object.keys(b.specials).length > 0 && (
+              <div className="chips-container">
+                <div className="chips">
+                  {Object.values(b.specials).map(s => (
+                    <span key={s.cell} className="chip">
+                      {s.cell}: {s.type}
+                      <button aria-label={`remove ${s.cell}`} onClick={() => removeSpecial(s.cell)}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="card-section">
+            <legend className="section-title">Players Setup</legend>
+            <div className="players-config">
+              <label>Number of Players
+                <select value={names.length} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 4].map(n => <option key={n}>{n} Players</option>)}</select>
+              </label>
+              <div className="player-inputs">
+                {names.map((n, i) => (
+                  <div key={i} className="player-input-row">
+                    <span className="player-dot-preview" style={{ background: ['#e63946', '#2a9d8f', '#f4a261', '#8e6bd8'][i] }} />
+                    <input value={n} maxLength={14} aria-label={`Player ${i + 1} name`} onChange={e => setNames(names.map((x, k) => (k === i ? e.target.value : x)))} placeholder={`Player ${i + 1}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </fieldset>
+
+          <div className="bar history-bar">
+            <button disabled={!d.past.length} onClick={d.undo}>↶ Undo</button>
+            <button disabled={!d.future.length} onClick={d.redo}>↷ Redo</button>
+            <button onClick={exportJson}>📥 Export</button>
+            <button onClick={() => file.current?.click()}>📤 Import</button>
+            <button onClick={() => { if (confirm('Reset all draft changes?')) d.reset() }}>↺ Reset</button>
+            <input ref={file} type="file" accept="application/json" hidden onChange={e => void importJson(e.target.files?.[0])} />
+          </div>
+
+          {err && <p className="err" role="alert">{err}</p>}
         </div>
         <div className="bar setup-footer">{setup && collapsed && <button onClick={() => regen()}>↻ Regenerate</button>}{!setup && <button onClick={onClose}>Close</button>}<button className="roll" onClick={() => { start(b, names.map((n, i) => n.trim() || `Player ${i + 1}`)); onClose() }}>{setup ? '▶ Start game' : 'Apply & restart'}</button></div>
       </div>

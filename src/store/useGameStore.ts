@@ -3,11 +3,17 @@ import type { BoardConfig, Fx, FxKind, Move, Phase, Player, Stage } from '../typ
 import { mulberry32, reshuffleUpper } from '../utils/boardGenerator'
 import { useDraft } from './useDraftStore'
 import { playFeedback, unlockSound } from '../utils/feedback'
-import { gentleMotion } from './useMotion'
+import { gentleMotion, motionOff } from './useMotion'
 
 const COLORS = ['#e63946', '#2a9d8f', '#f4a261', '#8e6bd8']
 const mkPlayers = (names: string[]): Player[] => names.map((name, i) => ({ id: i, name, color: COLORS[i], pos: 1, skip: 0 }))
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+let pending: (() => void) | null = null
+let timer: ReturnType<typeof setTimeout> | undefined
+let skipping = false
+const schedule = (fn: () => void, ms: number) => {
+  pending = fn
+  timer = setTimeout(() => { pending = null; fn() }, skipping || motionOff() ? 0 : ms)
+}
 let seq = 0
 const rm = gentleMotion
 const mv = (kind: Move['kind'], from: number, to: number): Move => ({ id: ++seq, kind, from, to })
@@ -17,6 +23,7 @@ interface GameState {
   dice: number | null; rollId: number; queue: Move[]; stage: Stage; shuffling: boolean; reshuffled: boolean
   mark: { from: number; to: number } | null; extra: boolean; toast: { id: number; text: string } | null; fx: Fx | null; winner: number | null; gameId: number
   startGame: (b: BoardConfig, names: string[]) => void
+  spectator: boolean; skipAnimation: () => void;
   roll: () => void; diceSettled: () => void; advance: () => void
 }
 
@@ -25,7 +32,7 @@ export const useGame = create<GameState>((set, get) => {
   /** Blink the destination first (1s), then start the move. Guarded against restarts. */
   const go = (queue: Move[], extra: Partial<GameState> = {}) => {
     const gid = get().gameId; set(extra)
-    setTimeout(() => { if (get().gameId === gid) set({ queue }) }, rm() ? 300 : 1000)
+    schedule(() => { if (get().gameId === gid) set({ queue }) }, rm() ? 300 : 1000)
   }
   const emit = (kind: FxKind, cell: number) => set({ fx: { id: ++seq, kind, cell } })
   const patch = (i: number, f: (p: Player) => Player) => set(s => ({ players: s.players.map((p, k) => (k === i ? f(p) : p)) }))
@@ -39,7 +46,7 @@ export const useGame = create<GameState>((set, get) => {
     else for (let g = 0; g < n && get().players[next].skip > 0; g++) {
       const q = get().players[next]; patch(next, x => ({ ...x, skip: x.skip - 1 })); say(`${q.name} skips a turn`); next = (next + 1) % n
     }
-    set({ current: next, extra: false, phase: 'IDLE', stage: 'conn', dice: null })
+    set({ current: next, extra: false, phase: 'IDLE', stage: 'conn' })
   }
 
   const resolve = () => {
@@ -68,13 +75,12 @@ export const useGame = create<GameState>((set, get) => {
       if (!s.reshuffled && p.pos >= s.board.size ** 2 - 7) {
         const gid = s.gameId
         set({ phase: 'TRIGGERING_RESHUFFLE', reshuffled: true, shuffling: true }); say('⚡ SHIFTING REALITY! Board Reshuffled!'); emit('shuffle', 0)
-        void (async () => {
-          await sleep(900); if (get().gameId !== gid) return
+        schedule(() => {
+          if (get().gameId !== gid) return
           const b = reshuffleUpper(get().board, mulberry32(Date.now()))
           set(x => ({ board: b, shuffling: false, boardVersion: x.boardVersion + 1 }))
-          await sleep(1100); if (get().gameId !== gid) return
-          finish()
-        })()
+          schedule(() => { if (get().gameId === gid) finish() }, 1100)
+        }, 900)
         return
       }
     }
@@ -86,18 +92,31 @@ export const useGame = create<GameState>((set, get) => {
     shuffling: false, reshuffled: false, extra: false, toast: null, fx: null, winner: null as number | null,
   })
   return {
-    ...init(useDraft.getState().present, ['Player 1', 'Player 2']), boardVersion: 0, rollId: 0, gameId: 0,
-    startGame: (b, names) => set(s => ({ ...init(b, names), boardVersion: s.boardVersion + 1, gameId: s.gameId + 1 })),
-    roll: () => { if (get().phase !== 'IDLE') return; void unlockSound().then(() => { if (get().phase === 'DICE_ROLLING') playFeedback('roll') }); set(s => ({ phase: 'DICE_ROLLING', dice: 1 + Math.floor(Math.random() * 6), rollId: s.rollId + 1 })) },
+    ...init(useDraft.getState().present, ['Player 1', 'Player 2']), boardVersion: 0, rollId: 0, gameId: 0, spectator: false,
+    startGame: (b, names) => { clearTimeout(timer); pending = null; set(s => ({ ...init(b, names), spectator: false, boardVersion: s.boardVersion + 1, gameId: s.gameId + 1 })) },
+    skipAnimation: () => {
+      if (get().spectator || ['IDLE', 'WIN'].includes(get().phase)) return
+      skipping = true
+      try {
+        for (let i = 0; i < 200 && !['IDLE', 'WIN'].includes(get().phase); i++) {
+          if (pending) { clearTimeout(timer); const fn = pending; pending = null; fn() }
+          else if (get().phase === 'DICE_ROLLING') get().diceSettled()
+          else if (get().queue.length) get().advance()
+          else break
+        }
+      } finally { skipping = false }
+      playFeedback('land')
+    },
+    roll: () => { if (get().spectator || get().phase !== 'IDLE') return; void unlockSound().then(() => { if (get().phase === 'DICE_ROLLING') playFeedback('roll') }); set(s => ({ phase: 'DICE_ROLLING', dice: 1 + Math.floor(Math.random() * 6), rollId: s.rollId + 1 })) },
     diceSettled: () => {
-      const s = get(); if (s.phase !== 'DICE_ROLLING' || s.dice == null) return
+      const s = get(); if (s.spectator || s.phase !== 'DICE_ROLLING' || s.dice == null) return
       const p = s.players[s.current], total = s.board.size ** 2
       set({ stage: 'end' })
       if (p.pos + s.dice > total) { say('Need an exact roll to finish'); finish(); return }
       go(Array.from({ length: s.dice }, (_, i) => mv('hop', p.pos + i, p.pos + i + 1)), { phase: 'PAWN_MOVING', stage: 'conn', mark: { from: p.pos, to: p.pos + s.dice } })
     },
     advance: () => {
-      const s = get(), m = s.queue[0]; if (!m) return
+      const s = get(), m = s.queue[0]; if (s.spectator || !m) return
       if (m.kind === 'snake' || m.kind === 'ladder') playFeedback('land')
       patch(s.current, p => ({ ...p, pos: m.to }))
       const rest = s.queue.slice(1); set({ queue: rest })

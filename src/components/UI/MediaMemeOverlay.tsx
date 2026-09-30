@@ -107,19 +107,36 @@ export function MediaMemeOverlay({ enabled }: { enabled: boolean }) {
     }
   }, [g.phase, g.current, g.players, g.board.snakes, enabled, motion.mode])
 
-  // Auto-dismiss timer
+  // Auto-dismiss timer (images only — videos close via onEnded)
   useEffect(() => {
-    if (!activeMeme) return
-    const timer = setTimeout(() => setActiveMeme(null), activeMeme.video ? 3600 : 2800)
+    if (!activeMeme || activeMeme.video) return
+    const timer = setTimeout(() => setActiveMeme(null), 2800)
     return () => clearTimeout(timer)
   }, [activeMeme])
 
   if (!activeMeme) return null
 
+  // Determine if the active meme includes a video
+  const isVideo = !!activeMeme.video
+
   return (
-    <div className="meme-overlay" onClick={() => setActiveMeme(null)} role="dialog" aria-label="Meme Popup">
+    <div
+      className="meme-overlay"
+      // Only allow clicking the backdrop to close when not a video
+      onClick={() => { if (!isVideo) setActiveMeme(null) }}
+      role="dialog"
+      aria-label="Meme Popup"
+    >
       <div className="meme-card" onClick={e => e.stopPropagation()}>
-        <button className="meme-close" onClick={() => setActiveMeme(null)} aria-label="Close meme">×</button>
+        <button
+          className="meme-close"
+          // Disable close button while video is playing
+          onClick={() => { if (!isVideo) setActiveMeme(null) }}
+          aria-label="Close meme"
+          disabled={isVideo}
+        >
+          ×
+        </button>
         {activeMeme.video ? (
           <video
             ref={videoRef}
@@ -128,6 +145,7 @@ export function MediaMemeOverlay({ enabled }: { enabled: boolean }) {
             playsInline
             muted={false}
             className="meme-media video"
+            // Close modal when video ends
             onEnded={() => setActiveMeme(null)}
           />
         ) : activeMeme.image ? (
